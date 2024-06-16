@@ -6,11 +6,12 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 12:
     print(f'This script requires Python 3.12 or later: {sys.version_info[1]}', file=sys.stderr)
     sys.exit(1)
 
-from typing import Literal, TypedDict
+from typing import Literal, Optional, TypedDict
 import logging
 from pathlib import Path
 from shutil import which
 from subprocess import run, CompletedProcess, CalledProcessError
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 logging.basicConfig(level=logging.WARNING,
                     handlers=[logging.StreamHandler(sys.stderr)],
@@ -41,8 +42,8 @@ platform_locations: dict[str, Location] = {
     "darwin": [
         {
             "dir": "/Applications/Houdini",
-            "glob": "Houdini*",
-            "subpath": "Frameworks/Houdini.framework/Versions/Current/Resources/bin/hotl"
+            "glob": "Houdini*/Frameworks/Houdini.framework/Versions/Current",
+            "subpath": "/Resources/bin/hotl"
         }
     ],
     "linux": [
@@ -116,6 +117,9 @@ def show_config():
     Show the current configuration
     """
     hotl = config(CONFIG_HOTL)
+    if hotl is None:
+        configure()
+        hotl = config(CONFIG_HOTL)
     clean, smudge = get_git_lfs()
     def show(key, value):
         print(f'{key:>14}: {value}')
@@ -123,7 +127,7 @@ def show_config():
     show('git-lfs clean', clean)
     show('git-lfs smudge', smudge)
 
-def get_hotl():
+def get_hotl() -> Path:
     """
     Get the hotl command from the git config.
     """
@@ -135,7 +139,7 @@ def get_hotl():
         exit(1)
     return Path(hotl)
 
-def get_git_lfs() -> tuple[str, str]:
+def get_git_lfs(file: Path = Path('%f')) -> tuple[str, str]:
     """
     Get the git-lfs commands.
     """
@@ -144,9 +148,31 @@ def get_git_lfs() -> tuple[str, str]:
     if clean is None or smudge is None:
         print('git-lfs not configured.', file=sys.stderr)
         exit(1)
-    return clean, smudge
+    return subst_file(clean, file), subst_file(smudge, file)
 
-def main(*, command: FilterCmd, debug: bool = False):
+def subst_file(cmd: str, file: Path):
+    """
+    Substitute the filename into the command line.
+    """
+    return str.replace(cmd, '%f', str(file))
+
+def clean(file: Path):
+    """
+    Clean the file using the hotl command.
+    """
+    hotl = get_hotl()
+    clean, _ = get_git_lfs(file)
+    with TemporaryDirectory() as tmpdir:
+        with NamedTemporaryFile(prefix='lfs') as fout:
+            with file.open('rb') as fin:
+                run(clean.split(' '), check=True, stdin=fin, stdout=fout)
+            with open(fout.name, 'rb') as fin:
+                data = fin.read()
+                print(data.decode())
+            run([hotl, file, tmpdir], check=True)
+            print(f'Cleaned {file} to {tmpdir}')
+
+def main(file: Optional[str]=None, *, command: FilterCmd, debug: bool = False):
     if debug:
         log.setLevel('DEBUG')
     match command:
@@ -156,12 +182,14 @@ def main(*, command: FilterCmd, debug: bool = False):
               show_config()
         case 'list':
             list_hotl()
+        case 'clean':
+            clean(Path(file))
         case _:
             print(f"Unknown command: {command}", file=sys.stderr)
             exit(1)
 
 if __name__ == '__main__':
-    from argparse import ArgumentParser, Namespace
+    from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument('--debug', '-d',
                         action='store_true',
@@ -169,12 +197,12 @@ if __name__ == '__main__':
     subcmds = parser.add_subparsers(dest='command')
     clean_parser = subcmds.add_parser('clean',
                                       description='Turn the HDA into textual form for git storage')
-    clean_parser.add_argument('--file',
+    clean_parser.add_argument('file',
                                 type=Path,
                                 help='The file to clean')
     smudge_parser = subcmds.add_parser('smudge',
                                        description='Turn the HDA into binary form for Houdini')
-    smudge_parser.add_argument('--file',
+    smudge_parser.add_argument('file',
                                  type=Path,
                                  help='The file to smudge')
     config_parser = subcmds.add_parser('configure',
