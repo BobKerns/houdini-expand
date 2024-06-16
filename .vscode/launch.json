@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${workspaceFolder:expand}/git_hooks/hda_filter.py",
             "args": [
-                "search"
+                "list"
             ],
             "console": "integratedTerminal"
         }
