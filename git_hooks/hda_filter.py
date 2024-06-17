@@ -13,12 +13,13 @@ from shutil import which, copyfile
 from subprocess import run, CompletedProcess, CalledProcessError
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from hashlib import sha256
-from io import BufferedReader, BufferedWriter, StringIO
+from io import BufferedReader, BufferedWriter
+import os
 
 import hashlib
 type Hash = hashlib._Hash
 
-logging.basicConfig(level=logging.WARNING,
+logging.basicConfig(level=logging.INFO,
                     handlers=[logging.StreamHandler(sys.stderr)],
 )
 log = logging.getLogger(Path(__file__).stem)
@@ -178,6 +179,21 @@ def git(cmd: str, *args: str):
         print(err, file=sys.stderr)
     return proc.stdout
 
+def find_path_dir() -> Path:
+    """
+    Find the path directory.
+    """
+    path = os.getenv('PATH', None)
+    if path is None:
+        raise Exception('No PATH environment variable')
+    for dir in path.split(os.pathsep):
+        dir = Path(dir)
+        if dir.is_dir() and os.access(dir, os.W_OK):
+            return dir
+    else:
+        log.warning('No writable directory in PATH' )
+        return Path.home() / '.local/bin'
+
 def install(dir: Optional[Path], *,
             hotl: Optional[str]=None,
             local: bool=False):
@@ -203,12 +219,19 @@ def install(dir: Optional[Path], *,
     if toplevel is None:
         raise Exception("The current directory is not within a git working tree.")
     toplevel = Path(toplevel)
-    gitattributes = toplevel / '.gitattributes'   
+    gitattributes = toplevel / '.gitattributes'
+    if dir is None or not dir.is_writeable():
+        dir = find_path_dir()
+    if not os.access(dir, os.W_OK):
+        dir = None
     script = Path(__file__)
     if dir is not None:
-        copyfile(script, dir / script.name)
+        install_loc = dir / script.name
+        log.info('Installing %s to %s', script, install_loc)
+        copyfile(script, install_loc)
+        install_loc.chmod(0o755)
     if which(script.name) is None:
-        log.warning('Script not on the path. Add %s to the path.', script)
+        log.warning('Script not on the path. Add %s to the path.', dir)
     config('filter.hda.clean', 'hda_filter clean %f', local=local)
     config('filter.hda.smudge', 'hda_filter smudge %f', local=local)
     config('filter.hda.required', True, local=local)
@@ -245,12 +268,10 @@ def list_hotl():
     for hotl in locations():
         print(f'. {hotl}: {hotl.exists()}')
 
-def load_gitattribtes():
+def load_gitattribtes(gitattributes: Path) -> dict[str, str]:
     """
     Load the .gitattributes file.
     """
-    os.getenv('GIT_DIR', '.git')
-    gitattributes = Path('.gitattributes')
     if not gitattributes.exists():
         return {}
     with gitattributes.open() as fin:
@@ -488,7 +509,7 @@ def main(command: FilterCmd,
         with open(outfile, 'wb') as fout:
             return main(command, file, f_input=f_input, f_output=fout, input=input, debug=debug)
     match command:
-        case 'configure':
+        case 'install':
             install(file,
                       hotl=hotl,
                       local=local)
