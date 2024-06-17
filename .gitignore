@@ -6,3 +6,7 @@ tmp/
 __pycache__
 .venv
 venv
+
+*.hda_txt
+*_smudged.hda*
+

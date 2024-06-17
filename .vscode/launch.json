@@ -5,13 +5,38 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug hda_filter",
+            "name": "Debug hda_filter clean",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder:expand}/git_hooks/hda_filter.py",
             "args": [
                 "clean",
-                "git_hooks/hda_filter.py"
+                "--input",
+                "--output",
+                "test.hda"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug hda_filter smudge",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder:expand}/git_hooks/hda_filter.py",
+            "args": [
+                "smudge",
+                "--input",
+                "--output",
+                "test.hda"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug hda_filter show",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder:expand}/git_hooks/hda_filter.py",
+            "args": [
+                "show"
             ],
             "console": "integratedTerminal"
         }
