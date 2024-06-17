@@ -39,6 +39,16 @@
                 "show"
             ],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug hda_filter configure",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder:expand}/git_hooks/hda_filter.py",
+            "args": [
+                "configure"
+            ],
+            "console": "integratedTerminal"
         }
     ]
 }

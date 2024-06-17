@@ -9,7 +9,7 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 12:
 from typing import Literal, Optional, TypedDict
 import logging
 from pathlib import Path
-from shutil import which
+from shutil import which, copyfile
 from subprocess import run, CompletedProcess, CalledProcessError
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from hashlib import sha256
@@ -178,26 +178,59 @@ def git(cmd: str, *args: str):
         print(err, file=sys.stderr)
     return proc.stdout
 
-def configure(hotl: Path|None = None):
+def install(dir: Optional[Path], *,
+            hotl: Optional[str]=None,
+            local: bool=False):
     """
-    Search for the hotl command and configure it in the git config.
+    Search for the hotl command and configure the hda_filter into the git config.
+
+    PARAMS:
+    dir: [optional] The directory to install this script. It should be on the path.
+    hotl: [optional] The hotl command to use. Defaults to searching for the newest Houdini installation.
+    local: [optional] Set the configuration locally rather than globally.
     """
     log.debug('Searching for hotl command.')
     if hotl is None:
         for hotl in locations():
             if hotl.is_file():
                 log.info(f'Found hotl: {hotl}')
-                git('config', CONFIG_HOTL, hotl)
+                config(CONFIG_HOTL, hotl, local=local)
     elif hotl.isfile():
-        git('config', CONFIG_HOTL, hotl)
+        config(CONFIG_HOTL, hotl, local=local)
     else:
         log.warning('No hotl command found. Is Houdini installed?')
+    toplevel = git('rev-parse', '--show-toplevel').strip()
+    if toplevel is None:
+        raise Exception("The current directory is not within a git working tree.")
+    toplevel = Path(toplevel)
+    gitattributes = toplevel / '.gitattributes'   
+    script = Path(__file__)
+    if dir is not None:
+        copyfile(script, dir / script.name)
+    if which(script.name) is None:
+        log.warning('Script not on the path. Add %s to the path.', script)
+    config('filter.hda.clean', 'hda_filter clean %f', local=local)
+    config('filter.hda.smudge', 'hda_filter smudge %f', local=local)
+    config('filter.hda.required', True, local=local)
+    attrs = load_gitattribtes(gitattributes)
+    attrs['*.hda'] = 'filter=hda dif=hda merge=hda -text lockable'
+    save_gitattributes(gitattributes, attrs)
     return None
 
-def config(key: str) -> str|None:
+def config(key: str, value: Optional[GitArg]=None, *,
+           local: Optional[bool]=False) -> str|None:
     """
     Get a config value from git.
     """
+    if value is not None:
+        match value:
+            case True:
+                value = 'true'
+            case False:
+                value = 'false'
+        args = ('--local',) if local else ('--global',)
+        git('config', *args, key, value)
+        return None
     try:
         return git('config', '--get', key).strip()
     except CalledProcessError as ex:
@@ -212,13 +245,32 @@ def list_hotl():
     for hotl in locations():
         print(f'. {hotl}: {hotl.exists()}')
 
+def load_gitattribtes():
+    """
+    Load the .gitattributes file.
+    """
+    os.getenv('GIT_DIR', '.git')
+    gitattributes = Path('.gitattributes')
+    if not gitattributes.exists():
+        return {}
+    with gitattributes.open() as fin:
+        return {line.split()[0]: line.split()[1] for line in fin}
+
+def save_gitattributes(gitattributes: Path, attrs: dict[str, str]):
+    """
+    Save the .gitattributes file.
+    """
+    with gitattributes.open('w') as fout:
+        for key, value in attrs.items():
+            print(f'{key} {value}', file=fout)
+
 def show_config():
     """
     Show the current configuration
     """
     hotl = config(CONFIG_HOTL)
     if hotl is None:
-        configure()
+        install()
         hotl = config(CONFIG_HOTL)
     clean, smudge = get_git_lfs()
     def show(key, value):
@@ -226,6 +278,9 @@ def show_config():
     show('hotl', hotl)
     show('git-lfs clean', clean)
     show('git-lfs smudge', smudge)
+    show('filter.hda.clean', config('filter.hda.clean'))
+    show('filter.hda.smudge', config('filter.hda.smudge'))
+    show('filter.hda.required', config('filter.hda.required'))
 
 def get_hotl() -> Path|None:
     """
@@ -233,9 +288,10 @@ def get_hotl() -> Path|None:
     """
     hotl = config(CONFIG_HOTL)
     if not hotl:
-         hotl = configure()
+         hotl = install()
     if not hotl:
-        print('No hotl command configured. Is Houdini installed?', file=sys.stderr)
+        print('No hotl command configured. Is Houdini installed?',
+              file=sys.stderr)
         return None
     return Path(hotl)
 
@@ -402,10 +458,12 @@ def decode_directory(root: Path, dir_header: DirectoryHeader, f_input: BufferedR
 def main(command: FilterCmd,
          file: Optional[str]=None,
          *,
-         input: bool = False,
-         output: bool = False,
+         input: Optional[bool] = False,
+         output: Optional[bool] = False,
          f_input: BufferedReader = sys.stdin,
          f_output: BufferedWriter = sys.stdout,
+         hotl: Optional[str] = None,
+         local: Optional[bool] = False,
          debug: bool = False):
     """
     Command-line interface for the HDA filter.
@@ -431,9 +489,11 @@ def main(command: FilterCmd,
             return main(command, file, f_input=f_input, f_output=fout, input=input, debug=debug)
     match command:
         case 'configure':
-            configure()
+            install(file,
+                      hotl=hotl,
+                      local=local)
         case 'show':
-              show_config()
+              show_config(file, hotl=hotl, local=local)
         case 'list':
             list_hotl()
         case 'clean':
@@ -473,12 +533,22 @@ if __name__ == '__main__':
     smudge_parser.add_argument('file',
                                  type=Path,
                                  help='The file to smudge')
-    config_parser = subcmds.add_parser('configure',
-                                       description='Search for Houdini installations and configure the hotl command')
-    config_parser.add_argument('--hotl',
+    install_parser = subcmds.add_parser('install',
+                                       description='''
+                                       Install and configure this command.
+                                       ''')
+    install_parser.add_argument('--hotl',
                                nargs='?',
                                type=Path,
-                               help='The hotl command to use')   
+                               help='The hotl command to use')
+    install_parser.add_argument('--local',
+                               action='store_true',
+                               help='Set the configuration locally rather than globally')
+    install_parser.add_argument('file',
+                               metavar='install_dir',
+                               type=Path,
+                               nargs='?',
+                               help='Location to install this script. It should be a location on the path.')  
     list_parser = subcmds.add_parser('list',
                                      description='List all Houdini installations')
     show_parser = subcmds.add_parser('show',
