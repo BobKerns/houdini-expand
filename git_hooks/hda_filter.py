@@ -48,7 +48,7 @@ def smudge(file: Path,
     else:
         try:
             with decode_stream(f_input) as tmpdir:
-                run([hotl, '-t', tmpdir, file], check=True)
+                run([hotl, '-l', tmpdir, file], check=True)
         except DecoderFailure:
             # If the decode fails, we get the binary from git-lfs.
             smudge_via_lfs(oid, file, f_output)
