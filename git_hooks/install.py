@@ -158,7 +158,6 @@ def list_hotl():
     for hotl in locations():
         print(f'. {hotl}: {hotl.exists()}')
 
-
 def status(local: bool=False):
     """
     Show the current configuration
@@ -200,7 +199,7 @@ def status(local: bool=False):
         attrs_file = GitAttributesFile.load(file)
         for key, attrs in attrs_file:
             if 'filter' in attrs or 'diff' in attrs or 'merge' in attrs:
-                print(f'{key}: {attrs}')
+                print(f'    {key}: {attrs}')
     show_gitattributes(toplevel / '.gitattributes')
     show_gitattributes(git_dir / 'info/gitattributes')
 
