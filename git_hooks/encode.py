@@ -9,6 +9,7 @@ from typing import BinaryIO, Literal, TypedDict, cast
 from pathlib import Path
 from hashlib import sha256
 import sys
+from shutil import copyfileobj
 
 from git_hooks.utils import log
 
@@ -214,6 +215,19 @@ def decode_directory(root: Path, dir_header: DirectoryHeader, f_input: BinaryIO)
 
 class DecoderFailure(Exception):
     pass
+
+@contextmanager
+def encode_stream(hotl: Path, file: Path, f_input: BinaryIO, f_output: BinaryIO):
+    """
+    Encode a file into a textual format.
+    """
+    with TemporaryDirectory() as tmpdir:
+        dir = Path(tmpdir)
+        with NamedTemporaryFile(prefix=f'{file.stem}_',
+                                suffix=file.suffix,
+                                delete_on_close=False) as blob:
+            copyfileobj(f_input, blob)
+            yield (dir, Path(blob.name))
 
 @contextmanager
 def decode_stream(f_input: BinaryIO):

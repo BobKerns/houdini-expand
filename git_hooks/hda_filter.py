@@ -2,7 +2,7 @@
 
 import sys
 
-from git_hooks.lfs import read_lfs, smudge_via_lfs
+from git_hooks.lfs import read_lfs, smudge_via_lfs, write_lfs
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 12:
     print(f'This script requires Python 3.12 or later: {sys.version_info[1]}', file=sys.stderr)
@@ -15,28 +15,23 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 from git_hooks.utils import log
 from git_hooks.install import get_git_filter, get_hotl
-from git_hooks.encode import DecoderFailure, decode_stream, encode_directory, read_header, smudge_via_decode
+from git_hooks.encode import (
+    DecoderFailure, decode_stream, encode_directory, encode_stream,
+    read_header, smudge_via_decode
+)
 
 def clean(file: Path, f_input: BinaryIO=sys.stdin.buffer, f_output: BinaryIO=sys.stdout.buffer):
     """
     Clean the file using the hotl command.
     """
     hotl = get_hotl()
-    clean, _ = get_git_filter('lfs', file)
-    with NamedTemporaryFile(prefix='lfs') as fout:
-        with file.open('rb') as fin:
-            run(clean.split(' '), check=True, stdin=fin, stdout=fout)
-            with open(fout.name, 'rb') as fin:
-                    data = fin.read()
-                    f_output.write(data)
+    write_lfs(file, f_output)
     if hotl is not None:
-        with TemporaryDirectory() as tmpdir:
-            with NamedTemporaryFile(prefix=f'{file.stem}_', suffix=file.suffix) as blob:
-                data = f_input.read()
-                blob.write(data)
-                run([hotl, '-t', tmpdir, blob.name], check=True)
-                dir = Path(tmpdir)
-                encode_directory(dir, dir, f_output)
+        with encode_stream(hotl, file, f_input, f_output) as (
+            dir, infile
+            ):
+            run([hotl, '-t', dir, infile], check=True)
+            encode_directory(dir, dir, f_output)
     log.debug(f'Cleaned {file} to {dir}')
 
 def smudge(file: Path,
