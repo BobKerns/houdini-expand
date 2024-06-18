@@ -1,3 +1,2 @@
-*.hda filter=hda dif=hda merge=hda -text lockable
-__init__.py ident
-
+version.py ident
+*.hda -text lockable filter=hda diff=hda merge=hda
