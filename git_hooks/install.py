@@ -7,7 +7,7 @@ Commands to install, configure, an inspect the git hooks.
 from enum import nonmember
 from pathlib import Path
 from typing import Optional, TypedDict
-from shutil import copyfile, which
+from shutil import copyfile, copytree, which
 import os
 import sys
 from subprocess import CalledProcessError
@@ -15,6 +15,7 @@ from subprocess import CalledProcessError
 from git_hooks.attributes import GitAttributesFile
 from git_hooks.utils import log
 from git_hooks.git import git, GitArg
+from git_hooks.version import IDENT, __version__
 
 CONFIG_HOTL = 'hdafilter.hotl'
 
@@ -109,12 +110,16 @@ def install(dir: Optional[Path] = None, *,
         dir = find_path_dir()
     if dir is not None and not os.access(dir, os.W_OK):
         dir = None
-    script = Path(__file__)
+    script = Path(__file__).with_stem('git_hooks')
+    srcdir = script.parent
     if dir is not None:
-        install_loc = dir / script.name
-        log.info('Installing %s to %s', script, install_loc)
-        copyfile(script, install_loc)
-        install_loc.chmod(0o755)
+        script_loc = dir / script.name
+        lib_loc = dir / script.stem
+        log.info('Installing script %s to %s', script, script_loc)
+        copyfile(script, script_loc)
+        log.info('Installing library to %s', lib_loc)
+        copytree(srcdir, lib_loc, dirs_exist_ok=True)
+        script_loc.chmod(0o755)
     if which(script.name) is None:
         log.warning('Script not on the path. Add %s to the path.', dir)
     config('filter.hda.clean', 'hda_filter.py clean %f', local=local)
@@ -154,7 +159,7 @@ def list_hotl():
         print(f'. {hotl}: {hotl.exists()}')
 
 
-def show_config(local: bool=False):
+def status(local: bool=False):
     """
     Show the current configuration
     """
@@ -163,22 +168,41 @@ def show_config(local: bool=False):
         install()
         hotl = config(CONFIG_HOTL)
     clean, smudge = get_git_filter('lfs')
+
+    info: list[tuple[str, str]] = []
     def show(key, value):
-        print(f'{key:>14}: {value}')
-    show('hotl', hotl)
+        info.append((key, value))
+    show('Version', __version__)
+    if IDENT:
+        show('Commit ID', IDENT)
+    show('Install location', Path(__file__).resolve().parent)
+    show('hotl command', hotl)
     show('git-lfs clean', clean)
     show('git-lfs smudge', smudge)
     show('filter.hda.clean', config('filter.hda.clean', local=local))
     show('filter.hda.smudge', config('filter.hda.smudge', local=local))
     show('filter.hda.required', config('filter.hda.required', local=local))
+
+    keywidth = max(len(key) for key, _ in info)
+    for key, value in info:
+        print(f'{key:>{keywidth}}: {value}')
     try:
         toplevel = Path(git('rev-parse', '--show-toplevel').strip())
     except:
         raise Exception("The current directory is not within a git working tree.")
-    print('Attributes:')
-    attrs = GitAttributesFile.load(toplevel / '.gitattributes')
-    for key, attr in attrs:
-        print(f'{key}: {attr}')
+
+    git_dir = Path(git('rev-parse', '--git-dir').strip())
+    if not git_dir.is_absolute():
+        git_dir = toplevel / git_dir
+    def show_gitattributes(file: Path):
+        if file.exists():
+            print(f'In {file.relative_to(toplevel)}:')
+        attrs_file = GitAttributesFile.load(file)
+        for key, attrs in attrs_file:
+            if 'filter' in attrs or 'diff' in attrs or 'merge' in attrs:
+                print(f'{key}: {attrs}')
+    show_gitattributes(toplevel / '.gitattributes')
+    show_gitattributes(git_dir / 'info/gitattributes')
 
 def get_hotl() -> Path|None:
     """

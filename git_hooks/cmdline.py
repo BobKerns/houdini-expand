@@ -6,26 +6,23 @@ Command line interface for git_hooks.
 import sys
 from pathlib import Path
 
-from git_hooks import IDENT
-print(f'Running {IDENT}')
-
 if sys.version_info[0] != 3 or sys.version_info[1] < 12:
     print(f'This script requires Python 3.12 or later: {sys.version_info[1]}', file=sys.stderr)
     sys.exit(1)
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-print(sys.path[0])
 
 from typing import BinaryIO, Literal, Optional
 
 from git_hooks.utils import path
-from git_hooks.install import list_hotl, show_config, install
+from git_hooks.install import list_hotl, status, install
 from git_hooks.hda_filter import (
     log,
     clean, smudge
 )
+from git_hooks.version import __version__, IDENT
 
-type FilterCmd = Literal['clean', 'smudge', 'configure', 'show', 'list']
+type FilterCmd = Literal['clean', 'smudge', 'configure', 'status', 'list']
 
 def main(command: FilterCmd,
          file: Optional[str]=None,
@@ -68,8 +65,8 @@ def main(command: FilterCmd,
             install(path(file, optional=True),
                       hotl=hotl,
                       local=local)
-        case 'show':
-              show_config(local=local)
+        case 'status':
+              status(local=local)
         case 'list':
             list_hotl()
         case 'clean':
@@ -130,7 +127,7 @@ def cmdline():
                                help='Location to install this script. It should be a location on the path.')
     list_parser = subcmds.add_parser('list',
                                      description='List all Houdini installations.')
-    show_parser = subcmds.add_parser('show',
+    show_parser = subcmds.add_parser('status',
                                      description='Show the current configuration.')
     args = parser.parse_args()
     main(**vars(args))

@@ -2,11 +2,10 @@
 Encode the a file into a textual format.
 """
 
-from collections.abc import Callable
 from contextlib import contextmanager
 from subprocess import run
-from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, BinaryIO, Literal, TypedDict, cast
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+from typing import BinaryIO, Literal, TypedDict, cast
 from pathlib import Path
 from hashlib import sha256
 import sys
