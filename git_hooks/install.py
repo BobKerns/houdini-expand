@@ -7,7 +7,7 @@ Commands to install, configure, an inspect the git hooks.
 from enum import nonmember
 from pathlib import Path
 from typing import Optional, TypedDict
-from shutil import copyfile, copytree, which
+from shutil import copyfile, copytree, rmtree, which
 import os
 import sys
 from subprocess import CalledProcessError
@@ -114,12 +114,20 @@ def install(dir: Optional[Path] = None, *,
     srcdir = script.parent
     if dir is not None:
         script_loc = dir / script.name
-        lib_loc = dir / script.stem
-        log.info('Installing script %s to %s', script, script_loc)
-        copyfile(script, script_loc)
-        log.info('Installing library to %s', lib_loc)
-        copytree(srcdir, lib_loc, dirs_exist_ok=True)
-        script_loc.chmod(0o755)
+        print(f'{script.parent.parent=} {dir=}')
+
+        print(f'{script=!s} {dir=!s} {script.is_relative_to(dir)=!s}')
+        if script.parent.parent.samefile(dir):
+            log.info('Script is already installed in %s', dir)
+        else:
+            lib_loc = dir / script.stem
+            log.info('Installing script %s to %s', script, script_loc)
+            copyfile(script, script_loc)
+            log.info('Installing library to %s', lib_loc)
+            if lib_loc.exists():
+                rmtree(lib_loc)
+            copytree(srcdir, lib_loc, dirs_exist_ok=True)
+            script_loc.chmod(0o755)
     if which(script.name) is None:
         log.warning('Script not on the path. Add %s to the path.', dir)
     config('filter.hda.clean', 'hda_filter.py clean %f', local=local)
