@@ -5,6 +5,7 @@ Command line interface for git_hooks.
 
 import sys
 from pathlib import Path
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 12:
     print(f'This script requires Python 3.12 or later: {sys.version_info[1]}', file=sys.stderr)
@@ -13,6 +14,7 @@ if sys.version_info[0] != 3 or sys.version_info[1] < 12:
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from typing import BinaryIO, Literal, Optional
+import re
 
 from git_hooks.utils import path
 from git_hooks.install import list_hotl, status, install
@@ -77,12 +79,47 @@ def main(command: FilterCmd,
             print(f"Unknown command: {command}", file=sys.stderr)
             exit(1)
 
+re_trim = re.compile(r'(?:^\n\s*$)+|(:?^\n\s*$)')
+re_ws_start = re.compile(r'^\s+')
+def trim(msg: str, indent: int=0) -> str:
+    """
+    Clean the message for printing.
+
+    Removes blank lines from beginning and end, then
+    removes the initial indentation from all lines,
+    and replaces it with the given number of spaces.
+
+    The initial indentation is the minimum number of spaces
+    on any non-blank line.
+    """
+    msg = re_trim.sub('', msg)
+    if indent >= 0:
+        lines = msg.split('\n')
+        min_indent = min(
+            len(line) - len(line.lstrip())
+            for line in lines
+            if line.strip())
+        re_prefix = re.compile(r'^\s{%d}' % min_indent)
+        msg = '\n'.join(re_prefix.sub(' ' * indent, line) for line in lines)
+        msg = re_ws_start.sub(' ' * indent, msg)
+    return msg
+
 def cmdline():
     """
     Handle command-line argments and run the main function.
     """
-    from argparse import ArgumentParser
-    parser = ArgumentParser()
+    parser = ArgumentParser(
+        description=trim(f'''
+        Git filter for various binary file types:
+        .hda, .tar, .tar.gz, .tar.bz2, .tar.xz, .tar.zst
+        ''',
+        indent=2),
+        epilog=trim(f'''
+        Version: {__version__}
+        Commit: {IDENT}
+        '''),
+        formatter_class=RawDescriptionHelpFormatter,
+    )
     parser.add_argument('--debug', '-d',
                         action='store_true',
                         help='Enable debug logging')
