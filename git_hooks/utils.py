@@ -5,10 +5,10 @@ Utilitiies for git hooks.
 from pathlib import Path
 from typing import Optional, Union, Literal, overload
 import logging
-import sys
+
 
 logging.basicConfig(level=logging.INFO,
-                    handlers=[logging.StreamHandler(sys.stderr)],
+                    format='%(levelname)s %(name)s: %(message)s',
 )
 log = logging.getLogger(Path(__file__).stem)
 

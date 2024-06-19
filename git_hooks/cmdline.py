@@ -16,13 +16,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from typing import BinaryIO, Literal, Optional
 import re
 
-from git_hooks.utils import path
+from git_hooks.utils import path, log
+from git_hooks.git import git
 from git_hooks.install import list_hotl, status, install
 from git_hooks.hda_filter import (
-    log,
     clean, smudge
 )
 from git_hooks.version import __version__, IDENT
+
+from logging.config import fileConfig
 
 type FilterCmd = Literal['clean', 'smudge', 'configure', 'status', 'list']
 
@@ -35,10 +37,22 @@ def main(command: FilterCmd,
          f_output: BinaryIO = sys.stdout.buffer,
          hotl: Optional[str] = None,
          local: bool = False,
-         debug: bool = False):
+         debug: bool = False,
+         log_config: Optional[str] = '$GIT_DIR/info/git_hooks.ini',
+         ):
     """
     Command-line interface for the HDA filter.
     """
+    if log_config:
+        git_dir = Path(git('rev-parse', '--git-dir').strip())
+        log_config = log_config.replace('$GIT_DIR', str(git_dir))
+        log_config = log_config.replace('$HOME', str(Path.home()))
+        if log_config.startswith('~'):
+            log_config = str(Path.home()) + log_config[1:]
+        if log_config != '':
+            log_config_file = Path(log_config)
+            if log_config_file.is_file():
+                fileConfig(log_config_file)
     if debug:
         log.setLevel('DEBUG')
     # For debugging, for the clean and smudge commands, we can supply --input and/or --output,
@@ -55,11 +69,11 @@ def main(command: FilterCmd,
         case _:
             infile, outfile = None, None
     if input and infile is not None:
-        log.warning('Opening %s for input', infile)
+        log.info('Opening %s for input', infile)
         with open(infile, 'rb') as fin:
             return main(command, file, f_input=fin, f_output=f_output, output=output, debug=debug)
     elif output and outfile is not None:
-        log.warning("Opening %s for output", outfile)
+        log.info("Opening %s for output", outfile)
         with open(outfile, 'wb') as fout:
             return main(command, file, f_input=f_input, f_output=fout, input=input, debug=debug)
     match command:
@@ -123,6 +137,9 @@ def cmdline():
     parser.add_argument('--debug', '-d',
                         action='store_true',
                         help='Enable debug logging')
+    parser.add_argument('--log-config',
+                        type=Path,
+                        help='The logging configuration file, defaults to $GIT_DIR/info/git_hooks.ini')
     subcmds = parser.add_subparsers(dest='command')
     clean_parser = subcmds.add_parser('clean',
                                       description='Turn the HDA into textual form for git storage')
