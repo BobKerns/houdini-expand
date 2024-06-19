@@ -5,10 +5,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug hda_filter clean",
+            "name": "Debug hda clean",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder:expand}/git_hooks/hda_filter.py",
+            "program": "${workspaceFolder:expand}/git_hooks/git_hooks.py",
             "args": [
                 "clean",
                 "--input",
@@ -18,10 +18,10 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Debug hda_filter smudge",
+            "name": "Debug hda smudge",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder:expand}/git_hooks/hda_filter.py",
+            "program": "${workspaceFolder:expand}/git_hooks/git_hooks.py",
             "args": [
                 "smudge",
                 "--input",
@@ -31,22 +31,32 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Debug hda_filter show",
+            "name": "Debug show",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder:expand}/git_hooks/hda_filter.py",
+            "program": "${workspaceFolder:expand}/git_hooks/git_hooks.py",
             "args": [
                 "show"
             ],
             "console": "integratedTerminal"
         },
         {
-            "name": "Debug hda_filter install",
+            "name": "Debug install",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder:expand}/git_hooks/hda_filter.py",
+            "program": "${workspaceFolder:expand}/git_hooks/git_hooks.py",
             "args": [
                 "install"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug help",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder:expand}/git_hooks/git_hooks.py",
+            "args": [
+                "--help"
             ],
             "console": "integratedTerminal"
         }
