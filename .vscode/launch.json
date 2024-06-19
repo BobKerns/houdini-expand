@@ -10,6 +10,7 @@
             "request": "launch",
             "program": "${workspaceFolder:expand}/git_hooks/git_hooks.py",
             "args": [
+                "--debug",
                 "clean",
                 "--input",
                 "--output",
@@ -23,6 +24,7 @@
             "request": "launch",
             "program": "${workspaceFolder:expand}/git_hooks/git_hooks.py",
             "args": [
+                "--debug",
                 "smudge",
                 "--input",
                 "--output",
@@ -36,6 +38,7 @@
             "request": "launch",
             "program": "${workspaceFolder:expand}/git_hooks/git_hooks.py",
             "args": [
+                "--debug",
                 "show"
             ],
             "console": "integratedTerminal"
@@ -46,6 +49,7 @@
             "request": "launch",
             "program": "${workspaceFolder:expand}/git_hooks/git_hooks.py",
             "args": [
+                "--debug",
                 "install"
             ],
             "console": "integratedTerminal"
