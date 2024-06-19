@@ -5,6 +5,7 @@ Command line interface for git_hooks.
 
 import sys
 from pathlib import Path
+import errno
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 
 if sys.version_info[0] != 3 or sys.version_info[1] < 12:
@@ -184,7 +185,10 @@ def cmdline():
     show_parser = subcmds.add_parser('status',
                                      description='Show the current configuration.')
     args = parser.parse_args()
-    main(**vars(args))
+    try:
+        main(**vars(args))
+    except BrokenPipeError:
+        exit(errno.EPIPE)
 
 if __name__ == '__main__':
     cmdline()
