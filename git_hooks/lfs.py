@@ -24,7 +24,11 @@ def write_lfs(file: Path, f_output: BinaryIO):
     """
     Write the LFS OID to the output.
     """
-    lfs_clean, _ = get_git_filter('lfs', file)
+    lfs = get_git_filter('lfs', file)
+    if lfs is None:
+        log.debug('No LFS filter for %s', file)
+        return
+    lfs_clean = lfs['clean']
     with NamedTemporaryFile(prefix='lfs') as fout:
         with file.open('rb') as fin:
             run(lfs_clean.split(' '), check=True, stdin=fin, stdout=fout)
@@ -36,9 +40,13 @@ def smudge_via_lfs(oid: bytes, file: Path,
     """
     Smudge the file using the git-lfs command.
     """
-    _, smudge = get_git_filter('lfs', file)
-    run(smudge.split(' '),
-        input=oid,
-        stdout=f_output,
-        check=True)
-    log.debug('Smudged %s via git-lfs', file)
+    f = get_git_filter('lfs', file)
+    if f is None:
+        log.debug('No LFS filter for %s', file)
+    else:
+        smudge = f['smudge']
+        run(smudge.split(' '),
+            input=oid,
+            stdout=f_output,
+            check=True)
+        log.debug('Smudged %s via git-lfs', file)

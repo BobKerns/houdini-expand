@@ -3,6 +3,8 @@ Encode the a file into a textual format.
 """
 
 from contextlib import contextmanager
+from datetime import date
+from platform import python_version
 from subprocess import run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import BinaryIO, Literal, TypedDict, cast
@@ -11,11 +13,16 @@ from hashlib import sha256
 import sys
 from shutil import copyfileobj
 
+import platformdirs
+
 from git_hooks.utils import log
 
 import hashlib
+
+from git_hooks.version import __version__
 type Hash = hashlib._Hash
 
+FORMAT_VERSION=1
 SEPARATOR='--------'
 
 type Sha256Hex = str
@@ -43,7 +50,7 @@ def update(hash: Hash, data: str|bytes):
         data = data.encode()
     hash.update(data)
 
-type EntryType = Literal['file', 'directory', 'symlink', 'footer']
+type EntryType = Literal['metadata', 'file', 'directory', 'symlink', 'footer']
 
 class Header(TypedDict):
     """
@@ -51,6 +58,18 @@ class Header(TypedDict):
     """
     type: EntryType
     name: Path
+
+class MetadataHeader(TypedDict):
+    """
+    Header for netadata of the archive.
+    """
+    format_version: int
+    git_hooks_version: str
+    git_hooks_commit: str
+    python_version: str
+    platformdirs: str
+    path: Path
+    date: date
 
 def write_header(header, f_output: BinaryIO) -> str:
     """

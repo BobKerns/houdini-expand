@@ -2,86 +2,30 @@
 Commands to install, configure, an inspect the git hooks.
 """
 
-
-
-from enum import nonmember
 from pathlib import Path
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, cast
 from shutil import copyfile, copytree, rmtree, which
 import os
-import sys
 from subprocess import CalledProcessError
 
 from git_hooks.attributes import GitAttributesFile
 from git_hooks.utils import log
 from git_hooks.git import git, GitArg
 from git_hooks.version import IDENT, __version__
+from git_hooks.filters import find_path_dir, locations
 
-CONFIG_HOTL = 'hdafilter.hotl'
+CONFIG_HOTL = 'filter.hda.hotl'
 
-
-class Location(TypedDict):
+class Filter(TypedDict):
     """
-    Candidate location for the hotl command.
+    Filter information.
     """
-    dir: str
-    glob: str
-    subpath: str
-
-### Where to look for the hotl command on different platforms.
-platform_locations: dict[str, list[Location]] = {
-    "win32": [
-        {
-            "dir": "C:/Program Files/Side Effects Software/",
-            "glob": "Houdini*",
-            "subpath": "bin/hotl.exe"
-        }
-    ],
-    "darwin": [
-        {
-            "dir": "/Applications/Houdini",
-            "glob": "Houdini*/Frameworks/Houdini.framework/Versions/Current",
-            "subpath": "Resources/bin/hotl"
-        }
-    ],
-    "linux": [
-        {
-            "dir": "/opt",
-            "glob": "hfs*",
-            "subpath": "bin/hotl"
-        }
-    ]
-}
-
-def locations():
-    """
-    Yields all potential hotl locations on the current platform.
-    """
-    return (
-        hotl / loc['subpath']
-        for loc in platform_locations[sys.platform]
-        for hotl in sorted(Path(loc['dir']).glob(loc['glob']), reverse=True)
-    )
-
-
-def find_path_dir() -> Path:
-    """
-    Find the path directory where we can install our scripts.
-    """
-    path = os.getenv('PATH', None)
-    if path is None:
-        raise Exception('No PATH environment variable')
-    for dir in path.split(os.pathsep):
-        dir = Path(dir)
-        if dir.is_dir() and os.access(dir, os.W_OK):
-            return dir
-    else:
-        log.warning('No writable directory in PATH' )
-        return Path.home() / '.local/bin'
-
+    clean: str
+    smudge: str
+    required: bool
 
 def install(dir: Optional[Path] = None, *,
-            hotl: Optional[str]=None,
+            hotl: Optional[Path]=None,
             local: bool=False):
     """
     Search for the hotl command and configure the hda_filter into the git config.
@@ -93,14 +37,22 @@ def install(dir: Optional[Path] = None, *,
     """
     log.debug('Searching for hotl command.')
     if hotl is None:
-        for h in locations():
+        for h in locations('hda', 'clean'):
+            log.debug(f'Checking {h}')
             if h.is_file():
                 log.info(f'Found hotl: {h}')
-                config(CONFIG_HOTL, hotl, local=local)
-    elif Path(hotl).is_file():
+                config(CONFIG_HOTL, h, local=local)
+                hotl = h
+                break
+        else:
+            log.error('No hotl command found. Is Houdini installed?')
+            return None
+    elif hotl.is_file():
+        log.info(f"Using {hotl} as the hotl command.")
         config(CONFIG_HOTL, hotl, local=local)
     else:
-        log.warning('No hotl command found. Is Houdini installed?')
+        log.error('Command not found: %s', hotl)
+        exit(1)
     toplevel = git('rev-parse', '--show-toplevel').strip()
     if toplevel is None:
         raise Exception("The current directory is not within a git working tree.")
@@ -114,9 +66,6 @@ def install(dir: Optional[Path] = None, *,
     srcdir = script.parent
     if dir is not None:
         script_loc = dir / script.name
-        print(f'{script.parent.parent=} {dir=}')
-
-        print(f'{script=!s} {dir=!s} {script.is_relative_to(dir)=!s}')
         if script.parent.parent.samefile(dir):
             log.info('Script is already installed in %s', dir)
         else:
@@ -130,8 +79,8 @@ def install(dir: Optional[Path] = None, *,
             script_loc.chmod(0o755)
     if which(script.name) is None:
         log.warning('Script not on the path. Add %s to the path.', dir)
-    config('filter.hda.clean', 'hda_filter.py clean %f', local=local)
-    config('filter.hda.smudge', 'hda_filter.py smudge %f', local=local)
+    config('filter.hda.clean', f'{script.name} clean %f', local=local)
+    config('filter.hda.smudge', f'{script.name} smudge %f', local=local)
     config('filter.hda.required', True, local=local)
     attrs = GitAttributesFile.load(gitattributes)
     attrs['*.hda'].set_attributes('-text', 'lockable', filter='hda', diff='hda', merge='hda')
@@ -139,21 +88,35 @@ def install(dir: Optional[Path] = None, *,
     return None
 
 def config(key: str, value: Optional[GitArg]=None, *,
-           local: Optional[bool]=False) -> str|None:
+           local: bool=False,
+           match: bool=False
+           ) -> str|None:
     """
     Get a config value from git.
     """
-    if value is not None:
+    args: tuple[str, ...] = ('--local',) if local else ('--global',)
+    if value is None:
+        if match:
+            args = ('--get-regexp',)
+            key = key.replace('.', '[.]').replace('*', '.*')
+        else:
+            args = ('--get',)
+    else:
+        rest: list[str]
         match value:
             case True:
-                value = 'true'
+                rest = ['true']
             case False:
-                value = 'false'
-        args = ('--local',) if local else ('--global',)
-        git('config', *args, key, value)
+                rest = ['false']
+            case None:
+                args = (*args, '--unset')
+                rest = []
+            case _:
+                rest = [str(value)]
+        git('config', *args, key, *rest)
         return None
     try:
-        return git('config', '--get', key).strip()
+        return git('config', *args, key).strip()
     except CalledProcessError as ex:
         if ex.returncode == 1:
             return None
@@ -163,7 +126,7 @@ def list_hotl():
     """
     List the potential hotl commands and whether they exist.
     """
-    for hotl in locations():
+    for hotl in locations('hda', 'hotl'):
         print(f'. {hotl}: {hotl.exists()}')
 
 def status(local: bool=False):
@@ -172,27 +135,32 @@ def status(local: bool=False):
     """
     hotl = config(CONFIG_HOTL)
     if hotl is None:
-        install()
         hotl = config(CONFIG_HOTL)
-    clean, smudge = get_git_filter('lfs')
-
-    info: list[tuple[str, str]] = []
-    def show(key, value):
-        info.append((key, value))
+    info: list[tuple[str, str|Path|None, int]] = []
+    def show(key: str,
+             value: str|Path|None='',
+             indent:int = 2):
+        info.append((key, value, indent))
     show('Version', __version__)
     if IDENT:
         show('Commit ID', IDENT)
     show('Install location', Path(__file__).resolve().parent)
     show('hotl command', hotl)
-    show('git-lfs clean', clean)
-    show('git-lfs smudge', smudge)
-    show('filter.hda.clean', config('filter.hda.clean', local=local))
-    show('filter.hda.smudge', config('filter.hda.smudge', local=local))
-    show('filter.hda.required', config('filter.hda.required', local=local))
+    for filter in ('lfs', 'hda'):
+        show(f'Filter {filter}', '', 0)
+        lines = config(f'filter.{filter}.*', match=True)
+        if lines is not None:
+            for line in lines.splitlines():
+                if line:
+                    key, value = line.split(' ', 1)
+                    show(f'  {key}', value)
 
-    keywidth = max(len(key) for key, _ in info)
-    for key, value in info:
-        print(f'{key:>{keywidth}}: {value}')
+    keywidth = max(len(key) for key, _, _ in info)
+    for key, value, indent in info:
+        if indent == 0:
+            print(f'{key}:')
+        else:
+            print(f'{'':{indent}}{key:>{keywidth}}: {value}')
     try:
         toplevel = Path(git('rev-parse', '--show-toplevel').strip())
     except:
@@ -219,12 +187,11 @@ def get_hotl() -> Path|None:
     if not hotl:
          hotl = install()
     if not hotl:
-        print('No hotl command configured. Is Houdini installed?',
-              file=sys.stderr)
+        log.error('No hotl command configured. Is Houdini installed?')
         return None
     return Path(hotl)
 
-def get_git_filter(filter: str, file: Optional[Path] = None) -> tuple[str, str]:
+def get_git_filter(filter: str, file: Optional[Path] = None) -> Filter|None:
     """
     Get the git-lfs commands.
 
@@ -232,14 +199,17 @@ def get_git_filter(filter: str, file: Optional[Path] = None) -> tuple[str, str]:
     filter: The filter name.
     file: The filename to substitute into the command line.
     """
-    clean = config(f'filter.{filter}.clean')
-    smudge = config(f'filter.{filter}.smudge')
-    if clean is None or smudge is None:
-        print('git-lfs not configured.', file=sys.stderr)
-        exit(1)
-    if file is None:
-        return clean, smudge
-    return subst_file(clean, file), subst_file(smudge, file)
+    lines = config(f'filter.{filter}.*', match=True)
+    if lines is None:
+        return None
+    lines = (l.strip() for l in lines.splitlines())
+    f = {
+        key.split('.')[2]: value
+        for line in lines
+        if line
+        for key, value in [line.split(' ', 1)]
+    }
+    return cast(Filter, f)
 
 def subst_file(cmd: str, file: Path):
     """

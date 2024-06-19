@@ -11,14 +11,14 @@ from typing import Literal, NotRequired, Optional, TypedDict
 
 from git_hooks.utils import log
 
-type LocationKind = Literal['clean', 'smudge']
+type FilterOp = Literal['clean', 'smudge']
 
 class BaseFilterInfo(TypedDict):
     """
     Candidate location for the hotl command.
     """
     filter: str
-    kind: LocationKind
+    kind: FilterOp
 
 class InternalFilterInfo(BaseFilterInfo):
     """
@@ -33,7 +33,7 @@ class InternalFilterInfo(BaseFilterInfo):
     dir: str
     glob: NotRequired[str]
     subpath: NotRequired[str]
-    args: str
+    args: NotRequired[dict[FilterOp, str]]
 
 class ExternalFilterInfo(BaseFilterInfo):
     """
@@ -55,15 +55,10 @@ platform_locations: dict[str, list[FilterInfo]] = {
             "glob": "Houdini*",
             "subpath": "bin/hotl.exe",
             "kind": 'clean',
-            "args": '-t %d %f',
-        },
-        {
-            "filter": "hda",
-            "dir": "C:/Program Files/Side Effects Software/",
-            "glob": "Houdini*",
-            "subpath": "bin/hotl.exe",
-            "kind": 'smudge',
-            "args": '-l %d %f',
+            "args": {
+                "clean": '-t %d %f',
+                "smudge": '-l %d %f',
+            }
         }
     ],
     "darwin": [
@@ -73,15 +68,10 @@ platform_locations: dict[str, list[FilterInfo]] = {
             "glob": "Houdini*/Frameworks/Houdini.framework/Versions/Current",
             "subpath": "Resources/bin/hotl",
             "kind": "clean",
-            "args": '-t %d %f',
-        },
-        {
-            "filter": "hda",
-            "dir": "/Applications/Houdini",
-            "glob": "Houdini*/Frameworks/Houdini.framework/Versions/Current",
-            "subpath": "Resources/bin/hotl",
-            "kind": "smudge",
-            "args": '-l %d %f',
+            "args": {
+                "clean": '-t %d %f',
+                "smudge": '-l %d %f',
+            }
         }
     ],
     "linux": [
@@ -91,21 +81,17 @@ platform_locations: dict[str, list[FilterInfo]] = {
             "glob": "hfs*",
             "subpath": "bin/hotl",
             "kind": "clean",
-            "args": '-t %d %f',
-        },
-        {
-            "filter": "hda",
-            "dir": "/opt",
-            "glob": "hfs*",
-            "subpath": "bin/hotl",
-            "kind": "smudge",
-            "args": '-l %d %f',
+            "args": {
+                "clean": '-t %d %f',
+                "smudge": '-l %d %f',
+            }
         }
     ]
 }
 
 def filter_info(filter: Optional[str] = None,
                 kind: Optional[str] = None,
+                op: Optional[FilterOp] = None,
                 ):
     """
     Yields all potential filter dependency locations
@@ -119,25 +105,28 @@ def filter_info(filter: Optional[str] = None,
         for spec in platform_locations[sys.platform]
         if filter is None or spec['filter'] == filter
         if kind is None or spec['kind'] == kind
+        if op is None or op in spec.get('args', {})
     )
 
 def locations(filter: Optional[str] = None,
               kind: Optional[str] = None,
               directory: bool = False,
               exists: bool = False,
+              op: Optional[FilterOp] = None,
               ) -> Generator[Path, None, None]:
     """
     Yields all potential hotl locations on the current platform.
     """
     return (
-        file if subpath is None else file / subpath
-        for spec in filter_info(filter, kind)
+        file
+        for spec in filter_info(filter, kind, op)
         for dir in [spec.get('dir', None)]
         if dir is not None
         for glob in [spec.get('glob', None)]
         if glob is not None
         for subpath in [spec.get('subpath', None)]
-        for file in sorted(Path(dir).glob(glob), reverse=True)
+        for subdir in sorted(Path(dir).glob(glob), reverse=True)
+        for file in [subdir / subpath if subpath else subdir]
         if not exists or file.exists()
         if not directory or file.is_dir()
         if directory or file.is_file()
