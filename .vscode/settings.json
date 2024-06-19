@@ -18,6 +18,8 @@
         "hotl",
         "Houdinis",
         "infile",
-        "subcmds"
+        "subcmds",
+        "srcdir",
+        "keywidth"
     ]
 }
